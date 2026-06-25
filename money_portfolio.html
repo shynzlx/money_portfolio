@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>投资组合追踪系统</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  :root {
+    --bg: #0f1117;
+    --bg2: #1a1d2e;
+    --bg3: #252840;
+    --border: rgba(255,255,255,0.08);
+    --border2: rgba(255,255,255,0.15);
+    --text: #e8eaf0;
+    --text2: #9da3b8;
+    --text3: #5a607a;
+    --green: #26c97e;
+    --red: #ff5c6a;
+    --blue: #4f8ef7;
+    --yellow: #f5c842;
+    --purple: #a78bfa;
+    --teal: #2dd4bf;
+    --orange: #fb923c;
+    --qualify: #f5c842;
+    --radius: 12px;
+    --radius-sm: 8px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'PingFang SC', 'Microsoft YaHei', -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  header {
+    background: var(--bg2);
+    border-bottom: 0.5px solid var(--border);
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .logo { font-size: 18px; font-weight: 600; color: var(--text); letter-spacing: 0.5px; }
+  .logo span { color: var(--blue); }
+
+  .header-right { display: flex; align-items: center; gap: 12px; }
+
+  .qualify-badge {
+    font-size: 12px;
+    background: rgba(245,200,66,0.12);
+    color: var(--yellow);
+    border: 0.5px solid rgba(245,200,66,0.3);
+    padding: 4px 10px;
+    border-radius: 20px;
+  }
+
+  .main { max-width: 1200px; margin: 0 auto; padding: 24px; }
+
+  .section-title {
+    font-size: 13px;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 12px;
+    margin-top: 28px;
+  }
+
+  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 8px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+
+  .card {
+    background: var(--bg2);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+  }
+
+  .metric-card { padding: 14px 16px; }
+  .metric-label { font-size: 12px; color: var(--text3); margin-bottom: 6px; }
+  .metric-value { font-size: 22px; font-weight: 600; color: var(--text); }
+  .metric-value.up { color: var(--green); }
+  .metric-value.down { color: var(--red); }
+  .metric-sub { font-size: 12px; color: var(--text3); margin-top: 4px; }
+  .metric-sub.pass { color: var(--green); }
+  .metric-sub.fail { color: var(--red); }
+
+  .chart-wrap { position: relative; width: 100%; }
+
+  .form-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 4px; }
+  .form-group { display: flex; flex-direction: column; gap: 4px; }
+  .form-group label { font-size: 12px; color: var(--text2); }
+
+  input, select {
+    background: var(--bg3);
+    border: 0.5px solid var(--border2);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    padding: 7px 10px;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.15s;
+    font-family: inherit;
+  }
+  input:focus, select:focus { border-color: var(--blue); }
+  input[type="number"] { width: 110px; }
+  input[type="date"] { width: 140px; }
+
+  button {
+    background: var(--blue);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius-sm);
+    padding: 8px 16px;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: opacity 0.15s;
+    white-space: nowrap;
+  }
+  button:hover { opacity: 0.85; }
+  button.secondary {
+    background: transparent;
+    border: 0.5px solid var(--border2);
+    color: var(--text2);
+  }
+  button.danger { background: rgba(255,92,106,0.15); color: var(--red); border: 0.5px solid rgba(255,92,106,0.3); }
+
+  .asset-inputs { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; margin-bottom: 12px; }
+  .asset-input-group { display: flex; flex-direction: column; gap: 4px; }
+  .asset-input-group label { font-size: 12px; color: var(--text2); display: flex; justify-content: space-between; }
+  .asset-input-group label span { color: var(--text3); font-size: 11px; }
+  .asset-input-group input { width: 100%; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { color: var(--text3); font-weight: 500; padding: 8px 10px; text-align: left; border-bottom: 0.5px solid var(--border); font-size: 12px; }
+  td { padding: 8px 10px; border-bottom: 0.5px solid rgba(255,255,255,0.04); color: var(--text2); }
+  td.up { color: var(--green); }
+  td.down { color: var(--red); }
+  td.pass { color: var(--green); }
+  td.fail { color: var(--red); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+
+  .tab-row { display: flex; gap: 2px; background: var(--bg3); padding: 3px; border-radius: var(--radius-sm); width: fit-content; margin-bottom: 16px; }
+  .tab { padding: 5px 14px; border-radius: 6px; font-size: 13px; color: var(--text3); cursor: pointer; transition: all 0.15s; }
+  .tab.active { background: var(--bg2); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+
+  .qualify-line-info { font-size: 12px; color: var(--text3); margin-top: 8px; }
+  .qualify-line-info span { color: var(--yellow); }
+
+  .empty-state { text-align: center; padding: 40px 20px; color: var(--text3); font-size: 14px; }
+  .empty-state .icon { font-size: 32px; margin-bottom: 8px; }
+
+  .asset-tag {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 5px;
+  }
+
+  .period-stat { display: flex; flex-direction: column; gap: 3px; }
+  .period-stat .label { font-size: 11px; color: var(--text3); }
+  .period-stat .value { font-size: 15px; font-weight: 600; }
+  .period-stat .qualify { font-size: 11px; }
+
+  .settings-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .settings-label { font-size: 13px; color: var(--text2); }
+
+  /* 新增样式 */
+  .action-btns { display: flex; gap: 6px; }
+  .asset-management { margin-top: 12px; padding-top: 12px; border-top: 0.5px solid var(--border); }
+  .asset-item { display: flex; align-items: center; gap: 12px; padding: 8px; background: var(--bg3); border-radius: var(--radius-sm); margin-bottom: 8px; }
+  .asset-name { flex: 1; font-weight: 500; }
+
+  @media (max-width: 700px) {
+    .grid-4 { grid-template-columns: repeat(2, 1fr); }
+    .grid-2 { grid-template-columns: 1fr; }
+    .grid-3 { grid-template-columns: 1fr 1fr; }
+    .main { padding: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">资产<span>追踪</span></div>
+  <div class="header-right">
+    <span class="qualify-badge" id="qualifyBadge">合格线: ¥72/天</span>
+    <button class="secondary" onclick="exportData()" style="padding:6px 12px;font-size:12px;">导出</button>
+    <button class="secondary" onclick="importData()" style="padding:6px 12px;font-size:12px;">导入</button>
+  </div>
+</header>
+
+<div class="main">
+
+  <div class="section-title">资产录入</div>
+  <div class="card">
+    <div class="form-row" style="margin-bottom:14px;">
+      <div class="form-group">
+        <label>日期</label>
+        <input type="date" id="entryDate">
+      </div>
+    </div>
+
+    <div id="assetInputs" class="asset-inputs"></div>
+
+    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:4px;">
+      <button onclick="addEntry()">✓ 添加/更新记录</button>
+      <button class="secondary" onclick="showAddAsset()">＋ 新增资产类别</button>
+      <div id="addAssetForm" style="display:none; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <input type="text" id="newAssetName" placeholder="类别名称 (如: 股票)" style="width:130px;">
+        <select id="newAssetColor">
+          <option value="#4f8ef7">蓝</option>
+          <option value="#26c97e">绿</option>
+          <option value="#a78bfa">紫</option>
+          <option value="#f5c842">黄</option>
+          <option value="#2dd4bf">青</option>
+          <option value="#fb923c">橙</option>
+          <option value="#ff5c6a">红</option>
+        </select>
+        <button onclick="confirmAddAsset()" style="padding:7px 12px;">确认</button>
+        <button class="secondary" onclick="cancelAddAsset()" style="padding:7px 10px;">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 资产管理 -->
+  <div class="card asset-management" style="margin-top:16px;">
+    <div class="section-title" style="margin:0 0 12px 0;">资产类别管理</div>
+    <div id="assetList"></div>
+    <button class="secondary" onclick="resetDefaultAssets()" style="margin-top:8px;">恢复默认类别</button>
+  </div>
+
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-top:28px; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
+    <div class="section-title" style="margin:0;">总净值走势</div>
+    <div class="tab-row">
+      <div class="tab active" onclick="setRange('week',this)">7天</div>
+      <div class="tab" onclick="setRange('month',this)">月</div>
+      <div class="tab" onclick="setRange('quarter',this)">季</div>
+      <div class="tab" onclick="setRange('year',this)">年</div>
+      <div class="tab" onclick="setRange('all',this)">全部</div>
+    </div>
+  </div>
+
+  <div class="grid-4" id="summaryCards">
+    <div class="card metric-card">
+      <div class="metric-label">今日净值</div>
+      <div class="metric-value" id="todayValue">—</div>
+      <div class="metric-sub" id="todayChange">暂无数据</div>
+    </div>
+    <div class="card metric-card">
+      <div class="metric-label">今日变动</div>
+      <div class="metric-value" id="todayDelta">—</div>
+      <div class="metric-sub" id="todayStatus">—</div>
+    </div>
+    <div class="card metric-card">
+      <div class="metric-label">本周净变动</div>
+      <div class="metric-value" id="weekDelta">—</div>
+      <div class="metric-sub" id="weekStatus">—</div>
+    </div>
+    <div class="card metric-card">
+      <div class="metric-label">本月净变动</div>
+      <div class="metric-value" id="monthDelta">—</div>
+      <div class="metric-sub" id="monthStatus">—</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px;">
+    <div class="chart-wrap" style="height:280px;">
+      <canvas id="lineChart" role="img" aria-label="资产净值折线图">资产净值历史走势图</canvas>
+    </div>
+    <div class="qualify-line-info">— <span>黄色虚线</span>为合格线（每日允许净损 ¥<span id="qualifyDisplay">72</span>）</div>
+  </div>
+
+  <div class="grid-2" style="margin-bottom:16px;">
+    <div class="card">
+      <div style="font-size:13px; color:var(--text2); margin-bottom:14px;">K线图（日净变动）</div>
+      <div class="chart-wrap" style="height:240px;">
+        <canvas id="klineChart" role="img" aria-label="每日净变动K线图">每日净变动图</canvas>
+      </div>
+    </div>
+    <div class="card">
+      <div style="font-size:13px; color:var(--text2); margin-bottom:14px;">资产构成</div>
+      <div class="chart-wrap" style="height:220px;">
+        <canvas id="pieChart" role="img" aria-label="资产构成饼图">各类资产占比</canvas>
+      </div>
+      <div id="pieLegend" style="display:flex; flex-wrap:wrap; gap:10px; margin-top:12px; font-size:12px;"></div>
+    </div>
+  </div>
+
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-top:28px; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
+    <div class="section-title" style="margin:0;">历史记录</div>
+    <div style="display:flex; gap:8px; align-items:center;">
+      <div class="settings-label">合格线 ¥/天</div>
+      <input type="number" id="qualifyInput" value="72" style="width:80px;" onchange="updateQualify()">
+    </div>
+  </div>
+
+  <div class="card">
+    <div id="historyTable">
+      <div class="empty-state">
+        <div class="icon">📊</div>
+        <div>暂无数据，请先录入资产余额</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const STORAGE_KEY = 'portfolio_data_v2';
+
+let state = loadState();
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+  return {
+    assets: [
+      { name: '现金', color: '#26c97e' },
+      { name: '股票', color: '#4f8ef7' },
+      { name: '基金', color: '#a78bfa' },
+      { name: '其他', color: '#fb923c' }
+    ],
+    entries: [],
+    qualifyPerDay: 72
+  };
+}
+
+function saveState() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+let lineChartInst = null;
+let klineChartInst = null;
+let pieChartInst = null;
+let currentRange = 'week';
+let editingDate = null; // 用于编辑模式
+
+function init() {
+  const today = new Date().toISOString().slice(0,10);
+  document.getElementById('entryDate').value = today;
+  document.getElementById('qualifyInput').value = state.qualifyPerDay;
+  document.getElementById('qualifyDisplay').textContent = state.qualifyPerDay;
+  document.getElementById('qualifyBadge').textContent = `合格线: ¥${state.qualifyPerDay}/天`;
+  renderAssetInputs();
+  renderAssetList();
+  renderAll();
+}
+
+function renderAssetInputs() {
+  const container = document.getElementById('assetInputs');
+  container.innerHTML = state.assets.map((a, i) => `
+    <div class="asset-input-group">
+      <label>
+        <span><span class="asset-tag" style="background:${a.color}"></span>${a.name}</span>
+        <span>¥</span>
+      </label>
+      <input type="number" id="asset_${i}" placeholder="0.00" step="0.01" min="0">
+    </div>
+  `).join('');
+}
+
+function renderAssetList() {
+  const container = document.getElementById('assetList');
+  container.innerHTML = state.assets.map((a, i) => `
+    <div class="asset-item">
+      <span class="asset-tag" style="background:${a.color}"></span>
+      <span class="asset-name">${a.name}</span>
+      <div class="action-btns">
+        <button class="secondary" onclick="editAsset(${i})" style="padding:4px 8px;font-size:12px;">编辑</button>
+        <button class="danger" onclick="deleteAsset(${i})" style="padding:4px 8px;font-size:12px;">删除</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function addEntry() {
+  const date = document.getElementById('entryDate').value;
+  if (!date) { alert('请选择日期'); return; }
+
+  const values = {};
+  let total = 0;
+  state.assets.forEach((a, i) => {
+    const v = parseFloat(document.getElementById(`asset_${i}`).value) || 0;
+    values[a.name] = v;
+    total += v;
+  });
+
+  if (total === 0) { alert('请至少输入一项余额'); return; }
+
+  const entry = { date, values, total };
+
+  const existIdx = state.entries.findIndex(e => e.date === date);
+  if (existIdx >= 0) {
+    if (!confirm(`${date} 已有记录，是否覆盖？`)) return;
+    state.entries[existIdx] = entry;
+  } else {
+    state.entries.push(entry);
+    state.entries.sort((a,b) => a.date.localeCompare(b.date));
+  }
+
+  saveState();
+  renderAll();
+  // 清空输入
+  state.assets.forEach((a, i) => { 
+    const input = document.getElementById(`asset_${i}`);
+    if (input) input.value = ''; 
+  });
+  editingDate = null;
+}
+
+function editEntry(date) {
+  const entry = state.entries.find(e => e.date === date);
+  if (!entry) return;
+
+  editingDate = date;
+  document.getElementById('entryDate').value = date;
+
+  // 填充表单
+  state.assets.forEach((a, i) => {
+    const input = document.getElementById(`asset_${i}`);
+    if (input) {
+      input.value = entry.values[a.name] || 0;
+    }
+  });
+
+  // 滚动到顶部
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function deleteEntry(date) {
+  if (!confirm(`确认删除 ${date} 的记录？`)) return;
+  state.entries = state.entries.filter(e => e.date !== date);
+  saveState();
+  renderAll();
+}
+
+function getFilteredEntries() {
+  const now = new Date();
+  const entries = state.entries;
+  if (currentRange === 'all') return entries;
+
+  const days = { week: 7, month: 30, quarter: 90, year: 365 }[currentRange];
+  const cutoff = new Date(now - days * 864e5).toISOString().slice(0,10);
+  return entries.filter(e => e.date >= cutoff);
+}
+
+function renderAll() {
+  renderSummary();
+  renderLineChart();
+  renderKlineChart();
+  renderPieChart();
+  renderHistory();
+}
+
+function renderSummary() { /* 原有代码不变 */ 
+  const entries = state.entries;
+  if (entries.length === 0) {
+    ['todayValue','todayDelta','weekDelta','monthDelta'].forEach(id => document.getElementById(id).textContent = '—');
+    return;
+  }
+
+  const latest = entries[entries.length - 1];
+  const prev = entries.length > 1 ? entries[entries.length - 2] : null;
+
+  document.getElementById('todayValue').textContent = '¥' + latest.total.toLocaleString('zh', {maximumFractionDigits:0});
+
+  const todayDelta = prev ? latest.total - prev.total : 0;
+  const todayEl = document.getElementById('todayDelta');
+  todayEl.textContent = (todayDelta >= 0 ? '+' : '') + '¥' + todayDelta.toLocaleString('zh', {maximumFractionDigits:0});
+  todayEl.className = 'metric-value ' + (todayDelta >= 0 ? 'up' : 'down');
+
+  const days = daysBetween(prev?.date, latest.date) || 1;
+  const todayQualify = -state.qualifyPerDay * days;
+  const statusEl = document.getElementById('todayStatus');
+  statusEl.textContent = todayDelta >= todayQualify ? '✓ 合格' : '✗ 超支';
+  statusEl.className = 'metric-sub ' + (todayDelta >= todayQualify ? 'pass' : 'fail');
+
+  const todayChangePct = prev ? ((todayDelta / prev.total) * 100).toFixed(2) : '0';
+  document.getElementById('todayChange').textContent = (todayDelta >= 0 ? '+' : '') + todayChangePct + '%';
+
+  const calcPeriodDelta = (daysBack) => {
+    const cutoff = new Date(new Date(latest.date) - daysBack * 864e5).toISOString().slice(0,10);
+    const ref = entries.filter(e => e.date <= cutoff).pop();
+    if (!ref) return null;
+    const d = daysBetween(ref.date, latest.date) || daysBack;
+    return { delta: latest.total - ref.total, days: d };
+  };
+
+  const week = calcPeriodDelta(7);
+  const weekEl = document.getElementById('weekDelta');
+  const weekStatusEl = document.getElementById('weekStatus');
+  if (week) {
+    weekEl.textContent = (week.delta >= 0 ? '+' : '') + '¥' + week.delta.toLocaleString('zh', {maximumFractionDigits:0});
+    weekEl.className = 'metric-value ' + (week.delta >= 0 ? 'up' : 'down');
+    const wq = -state.qualifyPerDay * week.days;
+    weekStatusEl.textContent = week.delta >= wq ? '✓ 合格' : '✗ 超支';
+    weekStatusEl.className = 'metric-sub ' + (week.delta >= wq ? 'pass' : 'fail');
+  } else { weekEl.textContent = '—'; weekStatusEl.textContent = '—'; }
+
+  const month = calcPeriodDelta(30);
+  const monthEl = document.getElementById('monthDelta');
+  const monthStatusEl = document.getElementById('monthStatus');
+  if (month) {
+    monthEl.textContent = (month.delta >= 0 ? '+' : '') + '¥' + month.delta.toLocaleString('zh', {maximumFractionDigits:0});
+    monthEl.className = 'metric-value ' + (month.delta >= 0 ? 'up' : 'down');
+    const mq = -state.qualifyPerDay * month.days;
+    monthStatusEl.textContent = month.delta >= mq ? '✓ 合格' : '✗ 超支';
+    monthStatusEl.className = 'metric-sub ' + (month.delta >= mq ? 'pass' : 'fail');
+  } else { monthEl.textContent = '—'; monthStatusEl.textContent = '—'; }
+}
+
+function renderLineChart() { /* 原有代码不变，保持简洁 */ 
+  const entries = getFilteredEntries();
+  if (lineChartInst) { lineChartInst.destroy(); lineChartInst = null; }
+  if (entries.length === 0) return;
+
+  const labels = entries.map(e => e.date.slice(5));
+  const totals = entries.map(e => e.total);
+
+  const first = entries[0].total;
+  const qualifyLine = entries.map((e, i) => {
+    const days = i === 0 ? 0 : daysBetween(entries[0].date, e.date);
+    return first - state.qualifyPerDay * days;
+  });
+
+  const assetDatasets = state.assets.map(a => ({
+    label: a.name,
+    data: entries.map(e => e.values[a.name] || 0),
+    borderColor: a.color,
+    backgroundColor: a.color + '18',
+    borderWidth: 1.5,
+    pointRadius: entries.length < 15 ? 3 : 0,
+    tension: 0.3,
+    fill: false
+  }));
+
+  lineChartInst = new Chart(document.getElementById('lineChart'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: '总净值',
+          data: totals,
+          borderColor: '#e8eaf0',
+          backgroundColor: 'rgba(232,234,240,0.08)',
+          borderWidth: 2,
+          pointRadius: entries.length < 15 ? 4 : 0,
+          tension: 0.3,
+          fill: true
+        },
+        ...assetDatasets,
+        {
+          label: `合格线 (-¥${state.qualifyPerDay}/天)`,
+          data: qualifyLine,
+          borderColor: '#f5c842',
+          borderWidth: 1.5,
+          borderDash: [6, 4],
+          pointRadius: 0,
+          fill: false,
+          tension: 0
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#1a1d2e',
+          borderColor: 'rgba(255,255,255,0.1)',
+          borderWidth: 1,
+          titleColor: '#9da3b8',
+          bodyColor: '#e8eaf0',
+          callbacks: {
+            label: ctx => `${ctx.dataset.label}: ¥${Math.round(ctx.parsed.y).toLocaleString('zh')}`
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(255,255,255,0.04)' },
+          ticks: { color: '#5a607a', font: { size: 11 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 10 }
+        },
+        y: {
+          grid: { color: 'rgba(255,255,255,0.04)' },
+          ticks: {
+            color: '#5a607a', font: { size: 11 },
+            callback: v => '¥' + Math.round(v/1000) + 'k'
+          }
+        }
+      }
+    }
+  });
+}
+
+function renderKlineChart() { /* 原有代码不变 */ 
+  const entries = getFilteredEntries();
+  if (klineChartInst) { klineChartInst.destroy(); klineChartInst = null; }
+  if (entries.length < 2) return;
+
+  const bars = [];
+  for (let i = 1; i < entries.length; i++) {
+    const delta = entries[i].total - entries[i-1].total;
+    const days = daysBetween(entries[i-1].date, entries[i].date) || 1;
+    bars.push({ date: entries[i].date.slice(5), delta, days });
+  }
+
+  const qualifyVal = -state.qualifyPerDay;
+
+  klineChartInst = new Chart(document.getElementById('klineChart'), {
+    type: 'bar',
+    data: {
+      labels: bars.map(b => b.date),
+      datasets: [
+        {
+          label: '日净变动',
+          data: bars.map(b => Math.round(b.delta)),
+          backgroundColor: bars.map(b => b.delta >= -state.qualifyPerDay * b.days ? 'rgba(38,201,126,0.7)' : 'rgba(255,92,106,0.7)'),
+          borderColor: bars.map(b => b.delta >= -state.qualifyPerDay * b.days ? '#26c97e' : '#ff5c6a'),
+          borderWidth: 1,
+          borderRadius: 3
+        },
+        {
+          label: `合格线 (-¥${state.qualifyPerDay})`,
+          data: bars.map(() => qualifyVal),
+          type: 'line',
+          borderColor: '#f5c842',
+          borderWidth: 1.5,
+          borderDash: [6, 4],
+          pointRadius: 0,
+          fill: false
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#1a1d2e',
+          borderColor: 'rgba(255,255,255,0.1)',
+          borderWidth: 1,
+          titleColor: '#9da3b8',
+          bodyColor: '#e8eaf0',
+          callbacks: {
+            label: ctx => `${ctx.dataset.label}: ¥${Math.round(ctx.parsed.y).toLocaleString('zh')}`
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(255,255,255,0.04)' },
+          ticks: { color: '#5a607a', font: { size: 11 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 8 }
+        },
+        y: {
+          grid: { color: 'rgba(255,255,255,0.04)' },
+          ticks: { color: '#5a607a', font: { size: 11 }, callback: v => '¥' + v.toLocaleString('zh') }
+        }
+      }
+    }
+  });
+}
+
+function renderPieChart() { /* 原有代码不变 */ 
+  const entries = state.entries;
+  if (pieChartInst) { pieChartInst.destroy(); pieChartInst = null; }
+  if (entries.length === 0) return;
+
+  const latest = entries[entries.length - 1];
+  const data = state.assets.map(a => latest.values[a.name] || 0);
+  const total = data.reduce((s,v) => s+v, 0);
+  const colors = state.assets.map(a => a.color);
+
+  pieChartInst = new Chart(document.getElementById('pieChart'), {
+    type: 'doughnut',
+    data: {
+      labels: state.assets.map(a => a.name),
+      datasets: [{ data, backgroundColor: colors.map(c => c + 'cc'), borderColor: colors, borderWidth: 1.5 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      cutout: '60%',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#1a1d2e',
+          borderColor: 'rgba(255,255,255,0.1)',
+          borderWidth: 1,
+          titleColor: '#9da3b8',
+          bodyColor: '#e8eaf0',
+          callbacks: {
+            label: ctx => {
+              const pct = total > 0 ? ((ctx.parsed / total) * 100).toFixed(1) : 0;
+              return `${ctx.label}: ¥${Math.round(ctx.parsed).toLocaleString('zh')} (${pct}%)`;
+            }
+          }
+        }
+      }
+    }
+  });
+
+  const legend = document.getElementById('pieLegend');
+  legend.innerHTML = state.assets.map((a, i) => {
+    const pct = total > 0 ? ((data[i] / total) * 100).toFixed(1) : 0;
+    return `<span style="display:flex;align-items:center;gap:5px;color:#9da3b8;">
+      <span style="width:10px;height:10px;border-radius:2px;background:${a.color};flex-shrink:0;"></span>
+      ${a.name} ${pct}%
+    </span>`;
+  }).join('');
+}
+
+function renderHistory() {
+  const container = document.getElementById('historyTable');
+  const entries = [...state.entries].reverse();
+
+  if (entries.length === 0) {
+    container.innerHTML = '<div class="empty-state"><div class="icon">📊</div><div>暂无数据，请先录入资产余额</div></div>';
+    return;
+  }
+
+  const rows = entries.map((e, idx) => {
+    const prev = state.entries[state.entries.length - 1 - idx - 1];
+    const delta = prev ? e.total - prev.total : null;
+    const days = prev ? daysBetween(prev.date, e.date) || 1 : 1;
+    const qualify = delta !== null ? delta >= -state.qualifyPerDay * days : null;
+    
+    // 保留两位小数 + 千位分隔符
+    const format = (n) => (n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+
+    const deltaStr = delta !== null 
+      ? ((delta >= 0 ? '+' : '') + '¥' + format(delta)) 
+      : '—';
+    
+    const deltaClass = delta === null ? '' : delta >= 0 ? 'up' : 'down';
+    const qualifyStr = qualify === null ? '—' : qualify ? '✓ 合格' : '✗ 超支';
+    const qualifyClass = qualify === null ? '' : qualify ? 'pass' : 'fail';
+
+    const assetCells = state.assets.map(a => {
+      const val = e.values[a.name] || 0;
+      return `<td>¥${format(val)}</td>`;
+    }).join('');
+
+    return `<tr>
+      <td style="color:var(--text2)">${e.date}</td>
+      <td style="color:var(--text)">¥${format(e.total)}</td>
+      <td class="${deltaClass}">${deltaStr}</td>
+      <td class="${qualifyClass}">${qualifyStr}</td>
+      ${assetCells}
+      <td>
+        <div class="action-btns">
+          <button class="secondary" onclick="editEntry('${e.date}')" style="padding:3px 8px;font-size:11px;">编辑</button>
+          <button class="danger" onclick="deleteEntry('${e.date}')" style="padding:3px 8px;font-size:11px;">删除</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  const assetHeaders = state.assets.map(a => `<th><span class="asset-tag" style="background:${a.color}"></span>${a.name}</th>`).join('');
+
+  container.innerHTML = `<table>
+    <thead><tr>
+      <th>日期</th><th>总净值</th><th>变动</th><th>合格</th>
+      ${assetHeaders}
+      <th>操作</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+// 资产类别管理
+function editAsset(index) {
+  const asset = state.assets[index];
+  const newName = prompt('请输入新的类别名称:', asset.name);
+  
+  if (!newName || newName.trim() === asset.name) return;
+
+  const trimmed = newName.trim();
+  
+  // 检查名称是否重复
+  if (state.assets.some((a, i) => i !== index && a.name === trimmed)) {
+    alert('该类别名称已存在！');
+    return;
+  }
+
+  const oldName = asset.name;
+  asset.name = trimmed;
+
+  // 【关键修复】把历史记录中的旧名称数据迁移到新名称
+  state.entries.forEach(entry => {
+    if (entry.values && oldName in entry.values) {
+      entry.values[trimmed] = entry.values[oldName];
+      delete entry.values[oldName];
+    }
+  });
+
+  saveState();
+  renderAssetInputs();
+  renderAssetList();
+  renderAll();
+  
+  alert(`类别已成功改名为 “${trimmed}”，所有历史数据已同步保留！`);
+}
+
+function deleteAsset(index) {
+  if (state.assets.length <= 1) {
+    alert('至少保留一个资产类别');
+    return;
+  }
+  if (!confirm(`确认删除类别 "${state.assets[index].name}"？此操作不可撤销，且会影响历史记录。`)) return;
+  
+  const deletedName = state.assets[index].name;
+  state.assets.splice(index, 1);
+  
+  // 从历史记录中移除该资产的数据
+  state.entries.forEach(entry => {
+    delete entry.values[deletedName];
+  });
+  
+  saveState();
+  renderAssetInputs();
+  renderAssetList();
+  renderAll();
+}
+
+function confirmAddAsset() {
+  const name = document.getElementById('newAssetName').value.trim();
+  const color = document.getElementById('newAssetColor').value;
+  if (!name) { alert('请输入类别名称'); return; }
+  if (state.assets.find(a => a.name === name)) { alert('该类别已存在'); return; }
+  state.assets.push({ name, color });
+  saveState();
+  renderAssetInputs();
+  renderAssetList();
+  cancelAddAsset();
+}
+
+function resetDefaultAssets() {
+  if (!confirm('恢复默认资产类别？现有类别将被替换。')) return;
+  state.assets = [
+    { name: '现金', color: '#26c97e' },
+    { name: '股票', color: '#4f8ef7' },
+    { name: '基金', color: '#a78bfa' },
+    { name: '其他', color: '#fb923c' }
+  ];
+  saveState();
+  renderAssetInputs();
+  renderAssetList();
+  renderAll();
+}
+
+// 数据导入导出
+function exportData() {
+  const json = JSON.stringify(state, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `portfolio_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+}
+
+function importData() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
+  input.onchange = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const imported = JSON.parse(ev.target.result);
+        if (imported.assets && imported.entries !== undefined && imported.qualifyPerDay !== undefined) {
+          if (confirm('导入将覆盖当前所有数据，确认继续？')) {
+            state = imported;
+            saveState();
+            renderAssetInputs();
+            renderAssetList();
+            renderAll();
+            alert('导入成功！');
+          }
+        } else {
+          alert('无效的备份文件');
+        }
+      } catch(err) {
+        alert('文件解析失败');
+      }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+function showAddAsset() {
+  document.getElementById('addAssetForm').style.display = 'flex';
+}
+function cancelAddAsset() {
+  document.getElementById('addAssetForm').style.display = 'none';
+  document.getElementById('newAssetName').value = '';
+}
+
+function updateQualify() {
+  const v = parseFloat(document.getElementById('qualifyInput').value);
+  if (isNaN(v) || v < 0) return;
+  state.qualifyPerDay = v;
+  document.getElementById('qualifyDisplay').textContent = v;
+  document.getElementById('qualifyBadge').textContent = `合格线: ¥${v}/天`;
+  saveState();
+  renderAll();
+}
+
+function daysBetween(dateA, dateB) {
+  if (!dateA || !dateB) return 0;
+  return Math.round((new Date(dateB) - new Date(dateA)) / 864e5);
+}
+
+function setRange(range, el) {
+  currentRange = range;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  renderLineChart();
+  renderKlineChart();
+}
+
+init();
+</script>
+</body>
+</html>
