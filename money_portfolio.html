@@ -4,7 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>投资组合追踪系统</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@0.2.0/dist/chartjs-chart-financial.min.js"></script>
 <style>
   :root {
     --bg: #0f1117;
@@ -243,12 +244,20 @@
 
   <div style="display:flex; align-items:center; justify-content:space-between; margin-top:28px; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
     <div class="section-title" style="margin:0;">总净值走势</div>
-    <div class="tab-row">
-      <div class="tab active" onclick="setRange('week',this)">7天</div>
-      <div class="tab" onclick="setRange('month',this)">月</div>
-      <div class="tab" onclick="setRange('quarter',this)">季</div>
-      <div class="tab" onclick="setRange('year',this)">年</div>
-      <div class="tab" onclick="setRange('all',this)">全部</div>
+    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+      <!-- 图表类型切换 -->
+      <div class="tab-row" id="chartTypeTabs">
+        <div class="tab active" onclick="setChartType('line',this)">折线图</div>
+        <div class="tab" onclick="setChartType('kline',this)">K线图</div>
+      </div>
+      <!-- 时间范围切换 -->
+      <div class="tab-row" id="rangeTabs">
+        <div class="tab active" onclick="setRange('week',this)">7天</div>
+        <div class="tab" onclick="setRange('month',this)">月</div>
+        <div class="tab" onclick="setRange('quarter',this)">季</div>
+        <div class="tab" onclick="setRange('year',this)">年</div>
+        <div class="tab" onclick="setRange('all',this)">全部</div>
+      </div>
     </div>
   </div>
 
@@ -279,14 +288,24 @@
     <div class="chart-wrap" style="height:280px;">
       <canvas id="lineChart" role="img" aria-label="资产净值折线图">资产净值历史走势图</canvas>
     </div>
-    <div class="qualify-line-info">— <span>黄色虚线</span>为合格线（每日允许净损 ¥<span id="qualifyDisplay">72</span>）</div>
   </div>
+
+  <span id="qualifyDisplay" style="display:none">72</span>
 
   <div class="grid-2" style="margin-bottom:16px;">
     <div class="card">
-      <div style="font-size:13px; color:var(--text2); margin-bottom:14px;">K线图（日净变动）</div>
-      <div class="chart-wrap" style="height:240px;">
-        <canvas id="klineChart" role="img" aria-label="每日净变动K线图">每日净变动图</canvas>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+        <div style="font-size:13px; color:var(--text2);">净变动折线图</div>
+        <div class="qualify-line-info" style="margin:0;">— <span>黄色虚线</span>为合格线</div>
+      </div>
+      <div class="tab-row" id="deltaRangeTabs" style="margin-bottom:12px;">
+        <div class="tab active" onclick="setDeltaRange('day',this)">日</div>
+        <div class="tab" onclick="setDeltaRange('week',this)">周</div>
+        <div class="tab" onclick="setDeltaRange('month',this)">月</div>
+        <div class="tab" onclick="setDeltaRange('year',this)">年</div>
+      </div>
+      <div class="chart-wrap" style="height:210px;">
+        <canvas id="klineChart" role="img" aria-label="净变动折线图">净变动折线图</canvas>
       </div>
     </div>
     <div class="card">
@@ -329,10 +348,10 @@ function loadState() {
   } catch(e) {}
   return {
     assets: [
-      { name: '现金', color: '#26c97e' },
-      { name: '股票', color: '#4f8ef7' },
-      { name: '基金', color: '#a78bfa' },
-      { name: '其他', color: '#fb923c' }
+      { name: '现金', color: '#26c97e', visible: true },
+      { name: '股票', color: '#4f8ef7', visible: true },
+      { name: '基金', color: '#a78bfa', visible: true },
+      { name: '其他', color: '#fb923c', visible: true }
     ],
     entries: [],
     qualifyPerDay: 72
@@ -347,9 +366,26 @@ let lineChartInst = null;
 let klineChartInst = null;
 let pieChartInst = null;
 let currentRange = 'week';
+let chartType = 'line';   // 新增，默认为折线图
+let deltaRange = 'day';   // 净变动折线图周期
 let editingDate = null; // 用于编辑模式
 
 function init() {
+    // 手动注册 candlestick 控制器（如果插件已加载）
+  try {
+    if (typeof Chart !== 'undefined' && Chart.register) {
+      // chartjs-chart-financial 会自动注册，但有些构建版本需要手动触发
+      // 尝试用 require 或直接使用全局变量
+      if (window.Chart && window.Chart.controllers && !window.Chart.controllers.candlestick) {
+        // 如果未注册，尝试从全局获取
+        if (window['chartjs-chart-financial']) {
+          Chart.register(window['chartjs-chart-financial']);
+        }
+      }
+    }
+  } catch(e) {
+    console.warn('Candlestick registration failed:', e);
+  }
   const today = new Date().toISOString().slice(0,10);
   document.getElementById('entryDate').value = today;
   document.getElementById('qualifyInput').value = state.qualifyPerDay;
@@ -379,12 +415,26 @@ function renderAssetList() {
     <div class="asset-item">
       <span class="asset-tag" style="background:${a.color}"></span>
       <span class="asset-name">${a.name}</span>
+      <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text2);">
+        <input type="checkbox" ${a.visible !== false ? 'checked' : ''} 
+               onchange="toggleAssetVisibility(${i}, this.checked)" style="accent-color:var(--blue);">
+        显示
+      </label>
       <div class="action-btns">
         <button class="secondary" onclick="editAsset(${i})" style="padding:4px 8px;font-size:12px;">编辑</button>
         <button class="danger" onclick="deleteAsset(${i})" style="padding:4px 8px;font-size:12px;">删除</button>
       </div>
     </div>
   `).join('');
+}
+
+function toggleAssetVisibility(index, visible) {
+  state.assets[index].visible = visible;
+  saveState();
+  renderMainChart();  // 只刷新总净值走势图
+  // 注意：K线图模式不受影响，但为了统一，也可以调用renderAll，但会重绘所有图表
+  // 这里仅刷新主图，副图和饼图不受影响，但为了保持一致性，调用renderAll即可。
+  renderAll(); // 或者只调用 renderMainChart 和 renderPieChart？为了简单，renderAll
 }
 
 function addEntry() {
@@ -458,10 +508,103 @@ function getFilteredEntries() {
   return entries.filter(e => e.date >= cutoff);
 }
 
+// ───────── 按真实日历周期分组（周日~周六为一周；自然月；自然季度；自然年）─────────
+// 返回 bucketKey 字符串，同一周期内的记录 key 相同，用于 groupBy
+// 本地日期格式化为 YYYY-MM-DD，避免 toISOString() 因时区转换导致日期偏移一天
+function toLocalDateStr(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function calendarBucketKey(dateStr, period) {
+  const d = new Date(dateStr + 'T00:00:00');
+  if (period === 'week') {
+    // 以周日为一周起点：减去 getDay()（0=周日）天数，得到该周周日的日期作为 key
+    const sunday = new Date(d);
+    sunday.setDate(d.getDate() - d.getDay());
+    return toLocalDateStr(sunday); // e.g. "2026-06-21"
+  }
+  if (period === 'month') {
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; // "2026-06"
+  }
+  if (period === 'quarter') {
+    const q = Math.floor(d.getMonth() / 3) + 1;
+    return `${d.getFullYear()}-Q${q}`; // "2026-Q2"
+  }
+  if (period === 'year') {
+    return `${d.getFullYear()}`; // "2026"
+  }
+  // 'day' 或其他：每天独立一组
+  return dateStr;
+}
+
+// 该周期的"理论天数"，用于合格线 = qualifyPerDay × 该周期实际跨越天数（不满整周期按自然边界裁剪）
+function calendarBucketRange(key, period) {
+  if (period === 'week') {
+    const start = new Date(key + 'T00:00:00');
+    const end = new Date(start); end.setDate(start.getDate() + 6);
+    return { start, end };
+  }
+  if (period === 'month') {
+    const [y,m] = key.split('-').map(Number);
+    const start = new Date(y, m-1, 1);
+    const end = new Date(y, m, 0); // 该月最后一天
+    return { start, end };
+  }
+  if (period === 'quarter') {
+    const [y,qStr] = key.split('-Q');
+    const q = Number(qStr);
+    const start = new Date(Number(y), (q-1)*3, 1);
+    const end = new Date(Number(y), q*3, 0);
+    return { start, end };
+  }
+  if (period === 'year') {
+    const y = Number(key);
+    return { start: new Date(y,0,1), end: new Date(y,11,31) };
+  }
+  // day
+  const start = new Date(key + 'T00:00:00');
+  return { start, end: start };
+}
+
+// 把记录按真实日历周期分组，返回按时间排序的桶数组：[{ key, start, end, entries:[...] }]
+function groupEntriesByCalendar(entries, period) {
+  if (period === 'all') {
+    // all 模式仍用固定30天分组（无自然边界概念）
+    return null;
+  }
+  const map = {};
+  for (const e of entries) {
+    const key = calendarBucketKey(e.date, period);
+    if (!map[key]) map[key] = [];
+    map[key].push(e);
+  }
+  const keys = Object.keys(map).sort((a,b) => {
+    const ra = calendarBucketRange(a, period), rb = calendarBucketRange(b, period);
+    return ra.start - rb.start;
+  });
+  return keys.map(key => {
+    const range = calendarBucketRange(key, period);
+    return { key, start: range.start, end: range.end, entries: map[key] };
+  });
+}
+
+// 格式化周期标签，比如周："6.21~6.27"，月："2026-06"，季度："2026 Q2"，年："2026"
+function formatBucketLabel(bucket, period) {
+  const fmt = d => `${d.getMonth()+1}.${String(d.getDate()).padStart(2,'0')}`;
+  if (period === 'week') return `${fmt(bucket.start)}~${fmt(bucket.end)}`;
+  if (period === 'month') return bucket.key; // "2026-06"
+  if (period === 'quarter') return bucket.key.replace('-', ' '); // "2026 Q2"
+  if (period === 'year') return bucket.key;
+  return bucket.key;
+}
+
 function renderAll() {
   renderSummary();
-  renderLineChart();
-  renderKlineChart();
+  renderMainChart();
+  renderDailyDeltaChart();
   renderPieChart();
   renderHistory();
 }
@@ -523,50 +666,353 @@ function renderSummary() { /* 原有代码不变 */
   } else { monthEl.textContent = '—'; monthStatusEl.textContent = '—'; }
 }
 
-function renderLineChart() { /* 原有代码不变，保持简洁 */ 
+function renderMainChart() {
   const entries = getFilteredEntries();
+  console.log('renderMainChart entries:', entries.length, entries); // 调试
   if (lineChartInst) { lineChartInst.destroy(); lineChartInst = null; }
-  if (entries.length === 0) return;
+  if (entries.length === 0) {
+    console.warn('No entries for line chart');
+    return;
+  }
 
   const labels = entries.map(e => e.date.slice(5));
-  const totals = entries.map(e => e.total);
+  console.log('Labels:', labels);
 
-  const first = entries[0].total;
-  const qualifyLine = entries.map((e, i) => {
-    const days = i === 0 ? 0 : daysBetween(entries[0].date, e.date);
-    return first - state.qualifyPerDay * days;
-  });
+  if (chartType === 'line') {
+    // ---- 折线图模式 ----
+    const totals = entries.map(e => e.total);
+    const visibleAssets = state.assets.filter(a => a.visible !== false);
+    const assetDatasets = visibleAssets.map(a => ({
+      label: a.name,
+      data: entries.map(e => e.values[a.name] || 0),
+      borderColor: a.color,
+      backgroundColor: a.color + '18',
+      borderWidth: 1.5,
+      pointRadius: entries.length < 15 ? 3 : 0,
+      tension: 0.3,
+      fill: false
+    }));
 
-  const assetDatasets = state.assets.map(a => ({
-    label: a.name,
-    data: entries.map(e => e.values[a.name] || 0),
-    borderColor: a.color,
-    backgroundColor: a.color + '18',
-    borderWidth: 1.5,
-    pointRadius: entries.length < 15 ? 3 : 0,
-    tension: 0.3,
-    fill: false
-  }));
+    lineChartInst = new Chart(document.getElementById('lineChart'), {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: '总净值',
+            data: totals,
+            borderColor: '#e8eaf0',
+            backgroundColor: 'rgba(232,234,240,0.08)',
+            borderWidth: 2.5,
+            pointRadius: entries.length < 15 ? 4 : 0,
+            tension: 0.3,
+            fill: true
+          },
+          ...assetDatasets
+        ]
+      },
+      options: {
+        responsive: true, 
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { 
+            display: true, 
+            position: 'top',
+            align: 'start',
+            labels: { 
+              color: '#9da3b8', 
+              font: { size: 12 },
+              usePointStyle: true,
+              padding: 15
+            }
+          },
+          tooltip: {
+            backgroundColor: '#1a1d2e',
+            borderColor: 'rgba(255,255,255,0.1)',
+            borderWidth: 1,
+            titleColor: '#9da3b8',
+            bodyColor: '#e8eaf0',
+            callbacks: {
+              label: ctx => `${ctx.dataset.label}: ¥${Math.round(ctx.parsed.y).toLocaleString('zh')}`
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: { color: 'rgba(255,255,255,0.04)' },
+            ticks: { color: '#5a607a', font: { size: 11 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 10 }
+          },
+          y: {
+            grid: { color: 'rgba(255,255,255,0.04)' },
+            ticks: {
+              color: '#5a607a', 
+              font: { size: 11 },
+              callback: v => '¥' + v.toLocaleString('zh')   // 修改这里：不再显示k，直接显示完整数字
+            }
+          }
+        }
+      }
+    });
 
-  lineChartInst = new Chart(document.getElementById('lineChart'), {
+  } else {
+    // ---- K线图：按真实日历周期分组（周日~周六为一周；自然月/季/年）----
+    const sorted = [...state.entries]; // 已按日期排序
+    if (sorted.length === 0) return;
+
+    const kData = [];
+    const calBuckets = groupEntriesByCalendar(sorted, currentRange);
+
+    if (calBuckets) {
+      // 真实日历分组（week / month / quarter / year）
+      for (const bucket of calBuckets) {
+        const group = bucket.entries;
+        const first = group[0];
+        const last  = group[group.length - 1];
+        const high  = Math.max(...group.map(e => e.total));
+        const low   = Math.min(...group.map(e => e.total));
+        const label = formatBucketLabel(bucket, currentRange);
+        kData.push({ label, o: first.total, h: high, l: low, c: last.total, bucketStart: bucket.start });
+      }
+    } else {
+      // all 模式：固定30天一组（从第一条记录起算，无自然周期概念）
+      const groupSize = 30;
+      const originDate = new Date(sorted[0].date);
+      const buckets = {};
+      for (const e of sorted) {
+        const diff = Math.floor((new Date(e.date) - originDate) / 864e5);
+        const bucketIdx = Math.floor(diff / groupSize);
+        if (!buckets[bucketIdx]) buckets[bucketIdx] = [];
+        buckets[bucketIdx].push(e);
+      }
+      const bucketKeys = Object.keys(buckets).map(Number).sort((a,b)=>a-b);
+      for (const bk of bucketKeys) {
+        const group = buckets[bk];
+        const first = group[0];
+        const last  = group[group.length - 1];
+        const high  = Math.max(...group.map(e => e.total));
+        const low   = Math.min(...group.map(e => e.total));
+        const labelStart = first.date.slice(5);
+        const labelEnd   = last.date.slice(5);
+        const label = labelStart === labelEnd ? labelStart : `${labelStart}~${labelEnd}`;
+        kData.push({ label, o: first.total, h: high, l: low, c: last.total, bucketStart: new Date(first.date) });
+      }
+    }
+
+    if (kData.length === 0) return;
+
+    // 用"浮动柱"(floating bar [min, max])实现正确的K线：
+    //   实体 = [min(open,close), max(open,close)]
+    //   影线 = [low, high]，宽度极窄
+    // 同时绘制合格线
+    const isUp    = kData.map(d => d.c >= d.o);
+    const upColor   = '#26c97e';
+    const downColor = '#ff5c6a';
+    const upColorA  = 'rgba(38,201,126,0.85)';
+    const downColorA= 'rgba(255,92,106,0.85)';
+
+    // 自定义插件：在实体柱中心画上下影线
+    const wickPlugin = {
+      id: 'wickPlugin',
+      afterDatasetsDraw(chart) {
+        const ctx2 = chart.ctx;
+        const meta = chart.getDatasetMeta(0); // 影线 dataset
+        const meta2 = chart.getDatasetMeta(1); // 实体 dataset
+        if (!meta || !meta2) return;
+        ctx2.save();
+        for (let i = 0; i < kData.length; i++) {
+          const d = kData[i];
+          const bar = meta2.data[i]; // 用实体柱的中心X
+          if (!bar) continue;
+          const x = bar.x;
+          const yHigh = chart.scales.y.getPixelForValue(d.h);
+          const yLow  = chart.scales.y.getPixelForValue(d.l);
+          const yOpen = chart.scales.y.getPixelForValue(d.o);
+          const yClose= chart.scales.y.getPixelForValue(d.c);
+          const bodyTop    = Math.min(yOpen, yClose);
+          const bodyBottom = Math.max(yOpen, yClose);
+          const color = isUp[i] ? upColor : downColor;
+          ctx2.strokeStyle = color;
+          ctx2.lineWidth = 1.5;
+          // 上影线
+          if (yHigh < bodyTop) {
+            ctx2.beginPath(); ctx2.moveTo(x, yHigh); ctx2.lineTo(x, bodyTop); ctx2.stroke();
+          }
+          // 下影线
+          if (yLow > bodyBottom) {
+            ctx2.beginPath(); ctx2.moveTo(x, yLow); ctx2.lineTo(x, bodyBottom); ctx2.stroke();
+          }
+        }
+        ctx2.restore();
+      }
+    };
+
+    // 合格线：以第一条记录净值为基准，每根K线起点距首日的实际天数偏移
+    const originForQualify = new Date(sorted[0].date);
+    const qualifyLineData = kData.map(d => {
+      const dayOffset = Math.round((d.bucketStart - originForQualify) / 864e5);
+      return state.entries[0].total - state.qualifyPerDay * Math.max(dayOffset, 0);
+    });
+
+    lineChartInst = new Chart(document.getElementById('lineChart'), {
+      type: 'bar',
+      plugins: [wickPlugin],
+      data: {
+        labels: kData.map(d => d.label),
+        datasets: [
+          // dataset 0: 影线占位（极窄，几乎不可见，仅用于撑起Y轴范围）
+          {
+            label: '影线范围',
+            data: kData.map(d => [d.l, d.h]),
+            backgroundColor: 'transparent',
+            borderColor: 'transparent',
+            borderWidth: 0,
+            barPercentage: 0.05,
+            categoryPercentage: 1,
+            borderSkipped: false,
+          },
+          // dataset 1: 实体柱（浮动 bar）
+          {
+            label: 'K线实体',
+            data: kData.map(d => [Math.min(d.o, d.c), Math.max(d.o, d.c)]),
+            backgroundColor: kData.map((d,i) => isUp[i] ? upColorA : downColorA),
+            borderColor:     kData.map((d,i) => isUp[i] ? upColor  : downColor),
+            borderWidth: 1,
+            barPercentage: 0.55,
+            categoryPercentage: 0.8,
+            borderSkipped: false,
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#1a1d2e',
+            borderColor: 'rgba(255,255,255,0.1)',
+            borderWidth: 1,
+            titleColor: '#9da3b8',
+            bodyColor: '#e8eaf0',
+            callbacks: {
+              title: (items) => kData[items[0].dataIndex]?.label || '',
+              label: function(ctx) {
+                const d = kData[ctx.dataIndex];
+                if (!d) return '';
+                const fmt = v => '¥' + Math.round(v).toLocaleString('zh');
+                return [
+                  `开: ${fmt(d.o)}`,
+                  `收: ${fmt(d.c)}`,
+                  `高: ${fmt(d.h)}`,
+                  `低: ${fmt(d.l)}`,
+                  `涨跌: ${d.c >= d.o ? '+' : ''}${fmt(d.c - d.o)}`
+                ];
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: { color: 'rgba(255,255,255,0.04)' },
+            ticks: { color: '#5a607a', font: { size: 11 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 16 }
+          },
+          y: {
+            grid: { color: 'rgba(255,255,255,0.04)' },
+            // 动态计算范围：在最高/最低价基础上留出 3% 的 padding，避免图形太扁
+            min: (function() {
+              const allLow  = Math.min(...kData.map(d => d.l));
+              const allHigh = Math.max(...kData.map(d => d.h));
+              const pad = (allHigh - allLow) * 0.15 || allLow * 0.01;
+              return allLow - pad;
+            })(),
+            max: (function() {
+              const allLow  = Math.min(...kData.map(d => d.l));
+              const allHigh = Math.max(...kData.map(d => d.h));
+              const pad = (allHigh - allLow) * 0.15 || allHigh * 0.01;
+              return allHigh + pad;
+            })(),
+            ticks: {
+              color: '#5a607a', font: { size: 11 },
+              callback: v => '¥' + v.toLocaleString('zh')
+            }
+          }
+        }
+      }
+    });
+  }
+}
+
+
+function renderDailyDeltaChart() {
+  if (klineChartInst) { klineChartInst.destroy(); klineChartInst = null; }
+  const entries = state.entries;
+  if (entries.length < 2) return;
+
+  // 按真实日历周期分组（日：每天独立；周：周日~周六；月/年：自然月/自然年）
+  const calBuckets = (deltaRange === 'day')
+    ? entries.map(e => ({ key: e.date, start: new Date(e.date), end: new Date(e.date), entries: [e] }))
+    : groupEntriesByCalendar(entries, deltaRange);
+
+  // 每个桶：变动 = 该桶最后一条 - 上一桶最后一条
+  const bars = [];
+  for (let bi = 0; bi < calBuckets.length; bi++) {
+    const bucket = calBuckets[bi];
+    const group = bucket.entries;
+    const last = group[group.length - 1];
+
+    let prevEntry = null;
+    if (bi > 0) {
+      const prevGroup = calBuckets[bi - 1].entries;
+      prevEntry = prevGroup[prevGroup.length - 1];
+    }
+    if (!prevEntry) continue; // 第一桶没有前值，跳过
+
+    const delta = last.total - prevEntry.total;
+
+    // 该桶实际跨越的日历天数（用真实记录间隔，而非周期理论天数），用于合格线
+    const actualDays = Math.round((new Date(last.date) - new Date(prevEntry.date)) / 864e5) || 1;
+
+    const label = (deltaRange === 'day') ? last.date.slice(5) : formatBucketLabel(bucket, deltaRange);
+
+    bars.push({ label, delta, qualifyVal: -(state.qualifyPerDay * actualDays) });
+  }
+
+  if (bars.length === 0) return;
+
+  const labels      = bars.map(b => b.label);
+  const deltaValues = bars.map(b => b.delta);
+  const qualifyVals = bars.map(b => b.qualifyVal); // 每组各自的合格线（可能不同）
+
+  const colors = deltaValues.map((v, i) => v >= qualifyVals[i] ? '#26c97e' : '#ff5c6a');
+
+  klineChartInst = new Chart(document.getElementById('klineChart'), {
     type: 'line',
     data: {
       labels,
       datasets: [
         {
-          label: '总净值',
-          data: totals,
-          borderColor: '#e8eaf0',
-          backgroundColor: 'rgba(232,234,240,0.08)',
+          label: '净变动',
+          data: deltaValues,
+          borderColor: '#4f8ef7',
           borderWidth: 2,
-          pointRadius: entries.length < 15 ? 4 : 0,
+          pointRadius: deltaValues.length < 30 ? 3 : 0,
+          pointBackgroundColor: colors,
+          pointBorderColor: colors,
           tension: 0.3,
-          fill: true
+          fill: false,
+          spanGaps: true,
+          segment: {
+            borderColor: ctx => {
+              const v = deltaValues[ctx.p1DataIndex];
+              const q = qualifyVals[ctx.p1DataIndex];
+              return v >= q ? '#26c97e' : '#ff5c6a';
+            }
+          }
         },
-        ...assetDatasets,
         {
-          label: `合格线 (-¥${state.qualifyPerDay}/天)`,
-          data: qualifyLine,
+          // 合格线：每组值不同，用折线连接
+          label: '合格线',
+          data: qualifyVals,
           borderColor: '#f5c842',
           borderWidth: 1.5,
           borderDash: [6, 4],
@@ -577,7 +1023,8 @@ function renderLineChart() { /* 原有代码不变，保持简洁 */
       ]
     },
     options: {
-      responsive: true, maintainAspectRatio: false,
+      responsive: true,
+      maintainAspectRatio: false,
       plugins: {
         legend: { display: false },
         tooltip: {
@@ -587,20 +1034,27 @@ function renderLineChart() { /* 原有代码不变，保持简洁 */
           titleColor: '#9da3b8',
           bodyColor: '#e8eaf0',
           callbacks: {
-            label: ctx => `${ctx.dataset.label}: ¥${Math.round(ctx.parsed.y).toLocaleString('zh')}`
+            title: items => bars[items[0].dataIndex]?.label || '',
+            label: function(ctx) {
+              const b = bars[ctx.dataIndex];
+              if (!b) return '';
+              const fmt = v => (v >= 0 ? '+' : '') + '¥' + Math.round(v).toLocaleString('zh');
+              if (ctx.datasetIndex === 1) return `合格线: ¥${Math.round(b.qualifyVal).toLocaleString('zh')}`;
+              return [`净变动: ${fmt(b.delta)}`, `合格线: ¥${Math.round(b.qualifyVal).toLocaleString('zh')}`, b.delta >= b.qualifyVal ? '✓ 合格' : '✗ 超支'];
+            }
           }
         }
       },
       scales: {
         x: {
           grid: { color: 'rgba(255,255,255,0.04)' },
-          ticks: { color: '#5a607a', font: { size: 11 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 10 }
+          ticks: { color: '#5a607a', font: { size: 11 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 12 }
         },
         y: {
           grid: { color: 'rgba(255,255,255,0.04)' },
           ticks: {
             color: '#5a607a', font: { size: 11 },
-            callback: v => '¥' + Math.round(v/1000) + 'k'
+            callback: v => (v >= 0 ? '+' : '') + '¥' + Math.round(v).toLocaleString('zh')
           }
         }
       }
@@ -608,81 +1062,26 @@ function renderLineChart() { /* 原有代码不变，保持简洁 */
   });
 }
 
-function renderKlineChart() { /* 原有代码不变 */ 
-  const entries = getFilteredEntries();
-  if (klineChartInst) { klineChartInst.destroy(); klineChartInst = null; }
-  if (entries.length < 2) return;
+let currentPieDate = null; // 新增全局变量，记录当前显示的饼图日期
 
-  const bars = [];
-  for (let i = 1; i < entries.length; i++) {
-    const delta = entries[i].total - entries[i-1].total;
-    const days = daysBetween(entries[i-1].date, entries[i].date) || 1;
-    bars.push({ date: entries[i].date.slice(5), delta, days });
-  }
-
-  const qualifyVal = -state.qualifyPerDay;
-
-  klineChartInst = new Chart(document.getElementById('klineChart'), {
-    type: 'bar',
-    data: {
-      labels: bars.map(b => b.date),
-      datasets: [
-        {
-          label: '日净变动',
-          data: bars.map(b => Math.round(b.delta)),
-          backgroundColor: bars.map(b => b.delta >= -state.qualifyPerDay * b.days ? 'rgba(38,201,126,0.7)' : 'rgba(255,92,106,0.7)'),
-          borderColor: bars.map(b => b.delta >= -state.qualifyPerDay * b.days ? '#26c97e' : '#ff5c6a'),
-          borderWidth: 1,
-          borderRadius: 3
-        },
-        {
-          label: `合格线 (-¥${state.qualifyPerDay})`,
-          data: bars.map(() => qualifyVal),
-          type: 'line',
-          borderColor: '#f5c842',
-          borderWidth: 1.5,
-          borderDash: [6, 4],
-          pointRadius: 0,
-          fill: false
-        }
-      ]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          backgroundColor: '#1a1d2e',
-          borderColor: 'rgba(255,255,255,0.1)',
-          borderWidth: 1,
-          titleColor: '#9da3b8',
-          bodyColor: '#e8eaf0',
-          callbacks: {
-            label: ctx => `${ctx.dataset.label}: ¥${Math.round(ctx.parsed.y).toLocaleString('zh')}`
-          }
-        }
-      },
-      scales: {
-        x: {
-          grid: { color: 'rgba(255,255,255,0.04)' },
-          ticks: { color: '#5a607a', font: { size: 11 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 8 }
-        },
-        y: {
-          grid: { color: 'rgba(255,255,255,0.04)' },
-          ticks: { color: '#5a607a', font: { size: 11 }, callback: v => '¥' + v.toLocaleString('zh') }
-        }
-      }
-    }
-  });
-}
-
-function renderPieChart() { /* 原有代码不变 */ 
-  const entries = state.entries;
+function renderPieChart(targetDate = null) {
   if (pieChartInst) { pieChartInst.destroy(); pieChartInst = null; }
+
+  const entries = state.entries;
   if (entries.length === 0) return;
 
-  const latest = entries[entries.length - 1];
-  const data = state.assets.map(a => latest.values[a.name] || 0);
+  let targetEntry;
+  if (targetDate) {
+    targetEntry = entries.find(e => e.date === targetDate);
+    currentPieDate = targetDate;
+  } else {
+    targetEntry = entries[entries.length - 1]; // 默认最新一天
+    currentPieDate = null;
+  }
+
+  if (!targetEntry) return;
+
+  const data = state.assets.map(a => targetEntry.values[a.name] || 0);
   const total = data.reduce((s,v) => s+v, 0);
   const colors = state.assets.map(a => a.color);
 
@@ -738,14 +1137,13 @@ function renderHistory() {
     const delta = prev ? e.total - prev.total : null;
     const days = prev ? daysBetween(prev.date, e.date) || 1 : 1;
     const qualify = delta !== null ? delta >= -state.qualifyPerDay * days : null;
-    
-    // 保留两位小数 + 千位分隔符
+
     const format = (n) => (n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 
     const deltaStr = delta !== null 
       ? ((delta >= 0 ? '+' : '') + '¥' + format(delta)) 
       : '—';
-    
+      
     const deltaClass = delta === null ? '' : delta >= 0 ? 'up' : 'down';
     const qualifyStr = qualify === null ? '—' : qualify ? '✓ 合格' : '✗ 超支';
     const qualifyClass = qualify === null ? '' : qualify ? 'pass' : 'fail';
@@ -755,7 +1153,7 @@ function renderHistory() {
       return `<td>¥${format(val)}</td>`;
     }).join('');
 
-    return `<tr>
+    return `<tr onclick="showPieForDate('${e.date}')" style="cursor:pointer;">
       <td style="color:var(--text2)">${e.date}</td>
       <td style="color:var(--text)">¥${format(e.total)}</td>
       <td class="${deltaClass}">${deltaStr}</td>
@@ -763,8 +1161,8 @@ function renderHistory() {
       ${assetCells}
       <td>
         <div class="action-btns">
-          <button class="secondary" onclick="editEntry('${e.date}')" style="padding:3px 8px;font-size:11px;">编辑</button>
-          <button class="danger" onclick="deleteEntry('${e.date}')" style="padding:3px 8px;font-size:11px;">删除</button>
+          <button class="secondary" onclick="event.stopImmediatePropagation();editEntry('${e.date}');" style="padding:3px 8px;font-size:11px;">编辑</button>
+          <button class="danger" onclick="event.stopImmediatePropagation();deleteEntry('${e.date}');" style="padding:3px 8px;font-size:11px;">删除</button>
         </div>
       </td>
     </tr>`;
@@ -842,7 +1240,7 @@ function confirmAddAsset() {
   const color = document.getElementById('newAssetColor').value;
   if (!name) { alert('请输入类别名称'); return; }
   if (state.assets.find(a => a.name === name)) { alert('该类别已存在'); return; }
-  state.assets.push({ name, color });
+  state.assets.push({ name, color, visible: true });
   saveState();
   renderAssetInputs();
   renderAssetList();
@@ -852,10 +1250,10 @@ function confirmAddAsset() {
 function resetDefaultAssets() {
   if (!confirm('恢复默认资产类别？现有类别将被替换。')) return;
   state.assets = [
-    { name: '现金', color: '#26c97e' },
-    { name: '股票', color: '#4f8ef7' },
-    { name: '基金', color: '#a78bfa' },
-    { name: '其他', color: '#fb923c' }
+    { name: '现金', color: '#26c97e', visible: true },
+    { name: '股票', color: '#4f8ef7', visible: true },
+    { name: '基金', color: '#a78bfa', visible: true },
+    { name: '其他', color: '#fb923c', visible: true }
   ];
   saveState();
   renderAssetInputs();
@@ -928,14 +1326,30 @@ function daysBetween(dateA, dateB) {
   return Math.round((new Date(dateB) - new Date(dateA)) / 864e5);
 }
 
-function setRange(range, el) {
-  currentRange = range;
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+function setDeltaRange(range, el) {
+  deltaRange = range;
+  document.querySelectorAll('#deltaRangeTabs .tab').forEach(t => t.classList.remove('active'));
   el.classList.add('active');
-  renderLineChart();
-  renderKlineChart();
+  renderDailyDeltaChart();
 }
 
+function setRange(range, el) {
+  currentRange = range;
+  document.querySelectorAll('#rangeTabs .tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  renderMainChart();   // 仅刷新总净值走势
+}
+
+function setChartType(type, el) {
+  chartType = type;
+  document.querySelectorAll('#chartTypeTabs .tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  renderMainChart();   // 只刷新总净值走势图
+}
+
+function showPieForDate(date) {
+  renderPieChart(date);
+}
 init();
 </script>
 </body>
